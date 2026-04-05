@@ -8,7 +8,7 @@ class PWMMode:
     def get_params(self):
         raise NotImplementedError
     
-    def run(self, freq, dc):
+    def run(self, freq=None, dc=None, step=None, delay=None):
         raise NotImplementedError
     
     def cleanup(self, pwm):
@@ -24,35 +24,78 @@ class FixedMode(PWMMode):
             dc = float(input("Enter duty cycle (%): "))
             if dc < 0 or dc > 100:
                 print("Duty cycle must be between 0 and 100")
-                return None, None
-            return freq, dc
+                return None, None, None, None
+            return freq, dc, None, None
         except ValueError:
             print("Invalid input. Please enter numbers.")
-            return None, None
+            return None, None, None, None
 
-    def run(self, freq, dc):
+    def run(self, freq=None, dc=None, step=None, delay=None):
         pwm = PWM(Pin(PIN))
         pwm.freq(freq)
         duty_u16 = int(MAX_DUTY * dc / 100)
         pwm.duty_u16(duty_u16)
         
         print(f"\nRunning PWM: {freq}Hz at {dc}% duty cycle")
-        print("Press Ctrl+C to stop")
+        print("Press Ctrl+C to go back to menu")
         
         try:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
-            pass
+            print("\nStopping...")
         
         self.cleanup(pwm)
-        print("\nPWM stopped")
+
+
+class MovingDCMode(PWMMode):
+    def get_params(self):
+        print("\n=== Fixed Freq, Moving DC ===")
+        try:
+            freq = int(input("Enter frequency (Hz): "))
+            dc_step = float(input("Enter DC step per iteration (%): "))
+            delay = float(input("Enter delay per step (seconds): "))
+            if dc_step <= 0 or delay <= 0:
+                print("Step and delay must be positive")
+                return None, None, None, None
+            return freq, None, dc_step, delay
+        except ValueError:
+            print("Invalid input. Please enter numbers.")
+            return None, None, None, None
+
+    def run(self, freq=None, dc=None, step=None, delay=None):
+        pwm = PWM(Pin(PIN))
+        pwm.freq(freq)
+        
+        duty = 0
+        direction = 1
+        step_u16 = int(MAX_DUTY * step / 100)
+        
+        print(f"\nRunning PWM: {freq}Hz, DC step: {step}%, delay: {delay}s")
+        print("Press Ctrl+C to go back to menu")
+        
+        try:
+            while True:
+                pwm.duty_u16(duty)
+                current_dc = int(duty / MAX_DUTY * 100)
+                print(f"Duty cycle: {current_dc}%")
+                time.sleep(delay)
+                duty += step_u16 * direction
+                if duty >= MAX_DUTY:
+                    direction = -1
+                elif duty <= 0:
+                    direction = 1
+        except KeyboardInterrupt:
+            print("\nStopping...")
+        
+        self.cleanup(pwm)
 
 
 class Menu:
     def __init__(self):
         self.modes = {
             "1": ("Fixed Freq and DC", FixedMode()),
+            "2": ("Fixed Freq, Moving DC", MovingDCMode()),
         }
     
     def show(self):
@@ -63,20 +106,21 @@ class Menu:
         print("-" * 30)
     
     def run(self):
-        self.show()
-        choice = input("Select option: ").strip()
-        
-        if choice == "x":
-            print("Goodbye!")
-            return
-        
-        if choice in self.modes:
-            name, mode = self.modes[choice]
-            freq, dc = mode.get_params()
-            if freq is not None:
-                mode.run(freq, dc)
-        else:
-            print("Invalid option")
+        while True:
+            self.show()
+            choice = input("Select option: ").strip()
+            
+            if choice == "x":
+                print("Goodbye!")
+                return
+            
+            if choice in self.modes:
+                name, mode = self.modes[choice]
+                result = mode.get_params()
+                if result[0] is not None:
+                    mode.run(*result)
+            else:
+                print("Invalid option")
 
 
 def main():
