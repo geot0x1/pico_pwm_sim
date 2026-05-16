@@ -7,7 +7,7 @@ LED_PIN = 25
 BLINK_INTERVAL = 0.5
 
 CHANNEL_A = 17
-CHANNEL_B = 16
+CHANNEL_B = 14
 
 class PWMController:
     def __init__(self):

@@ -143,7 +143,7 @@ class PWMControlGUI(QMainWindow):
         main_layout.addWidget(ch1_group)
 
         # Channel 2 (PIN16)
-        ch2_group = QGroupBox("Channel 2 (PIN16)")
+        ch2_group = QGroupBox("Channel 2 (PIN14)")
         ch2_layout = QVBoxLayout()
 
         freq_layout = QHBoxLayout()
