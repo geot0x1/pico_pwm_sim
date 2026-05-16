@@ -6,20 +6,18 @@ MAX_DUTY = 65535
 LED_PIN = 25
 BLINK_INTERVAL = 0.5
 
+CHANNEL_A = 17
+CHANNEL_B = 16
+
 class PWMController:
     def __init__(self):
         self.pwm_pins = {
-            17: {'pwm': None, 'freq': 1000, 'dc': 0},
-            16: {'pwm': None, 'freq': 1000, 'dc': 0},
-        }
-        self.input_pins = {
-            26: {'pin': None, 'state': 0},
-            27: {'pin': None, 'state': 0},
+            CHANNEL_A: {'pwm': None, 'freq': 1000, 'dc': 0},
+            CHANNEL_B: {'pwm': None, 'freq': 1000, 'dc': 0},
         }
         self.led = None
         self.running = True
         self.init_pwm()
-        self.init_inputs()
         self.init_led()
 
     def init_pwm(self):
@@ -27,11 +25,6 @@ class PWMController:
             self.pwm_pins[pin_num]['pwm'] = PWM(Pin(pin_num))
             self.pwm_pins[pin_num]['pwm'].freq(self.pwm_pins[pin_num]['freq'])
             self.set_duty_cycle(pin_num, self.pwm_pins[pin_num]['dc'])
-
-    def init_inputs(self):
-        for pin_num in self.input_pins:
-            self.input_pins[pin_num]['pin'] = Pin(pin_num, Pin.IN, Pin.PULL_UP)
-            self.update_input_state(pin_num)
 
     def init_led(self):
         self.led = Pin(LED_PIN, Pin.OUT)
@@ -45,111 +38,53 @@ class PWMController:
             self.led.off()
             time.sleep(BLINK_INTERVAL)
 
-    def update_input_state(self, pin_num):
-        self.input_pins[pin_num]['state'] = self.input_pins[pin_num]['pin'].value()
-
     def set_duty_cycle(self, pin_num, dc):
         if not (0 <= dc <= 100):
-            print(f"Error: Duty cycle must be 0-100%, got {dc}")
             return False
-
         self.pwm_pins[pin_num]['dc'] = dc
-        duty_u16 = int(MAX_DUTY * dc / 100)
-        self.pwm_pins[pin_num]['pwm'].duty_u16(duty_u16)
+        self.pwm_pins[pin_num]['pwm'].duty_u16(int(MAX_DUTY * dc / 100))
         return True
 
     def set_frequency(self, pin_num, freq):
         if freq <= 0:
-            print(f"Error: Frequency must be positive, got {freq}")
             return False
-
         self.pwm_pins[pin_num]['freq'] = freq
         self.pwm_pins[pin_num]['pwm'].freq(freq)
         return True
 
+    def set_channel(self, pin_num, freq, dc):
+        return self.set_frequency(pin_num, freq) and self.set_duty_cycle(pin_num, dc)
+
     def parse_command(self, cmd):
         cmd = cmd.strip()
-        if not cmd:
-            return
+        if not cmd.startswith("SET="):
+            return False
 
         try:
-            if ',' in cmd:
-                parts = cmd.split(',')
+            parts = cmd[4:].split(',')
+            mode = int(parts[0])
+
+            if mode == 1:
                 if len(parts) != 3:
-                    print("Invalid format. Use: p17,freq,dc or p16,freq,dc")
-                    return
+                    return False
+                return self.set_channel(CHANNEL_A, int(parts[1]), int(parts[2]))
 
-                pin_str = parts[0].strip().lower()
-                freq_str = parts[1].strip()
-                dc_str = parts[2].strip()
+            elif mode == 2:
+                if len(parts) != 3:
+                    return False
+                return self.set_channel(CHANNEL_B, int(parts[1]), int(parts[2]))
 
-                if pin_str not in ['p17', 'p16']:
-                    print("Invalid pin. Use p17 or p16")
-                    return
+            elif mode == 3:
+                if len(parts) != 5:
+                    return False
+                ok_a = self.set_channel(CHANNEL_A, int(parts[1]), int(parts[2]))
+                ok_b = self.set_channel(CHANNEL_B, int(parts[3]), int(parts[4]))
+                return ok_a and ok_b
 
-                pin_num = int(pin_str[1:])
-                freq = int(freq_str)
-                dc = float(dc_str)
+            return False
 
-                if self.set_frequency(pin_num, freq):
-                    self.set_duty_cycle(pin_num, dc)
-                    print(f"PIN{pin_num}: {freq}Hz @ {dc}%")
-
-            elif ' ' in cmd:
-                parts = cmd.split()
-                pin_str = parts[0].lower()
-
-                if pin_str not in ['p17', 'p16']:
-                    print("Invalid pin. Use p17 or p16")
-                    return
-
-                pin_num = int(pin_str[1:])
-
-                if len(parts) < 2:
-                    print("Incomplete command")
-                    return
-
-                param = parts[1].lower()
-
-                if '=' not in param:
-                    print("Invalid format. Use: p17 f=1000 or p17 dc=50")
-                    return
-
-                key, value = param.split('=', 1)
-                value = float(value)
-
-                if key == 'f':
-                    if self.set_frequency(pin_num, int(value)):
-                        print(f"PIN{pin_num} frequency: {int(value)}Hz (DC: {self.pwm_pins[pin_num]['dc']}%)")
-                elif key == 'dc':
-                    if self.set_duty_cycle(pin_num, value):
-                        print(f"PIN{pin_num} duty cycle: {value}% (Freq: {self.pwm_pins[pin_num]['freq']}Hz)")
-                else:
-                    print("Unknown parameter. Use 'f' for frequency or 'dc' for duty cycle")
-
-            else:
-                print("Invalid format. Examples:")
-                print("  p17,1000,50")
-                print("  p16 f=2000")
-                print("  p17 dc=75")
-
-        except ValueError:
-            print("Error: Invalid values. Frequency and duty cycle must be numbers")
-        except IndexError:
-            print("Error: Invalid command format")
-
-    def status(self):
-        print("\n--- PWM Status ---")
-        for pin_num in [17, 16]:
-            info = self.pwm_pins[pin_num]
-            print(f"PIN{pin_num}: {info['freq']}Hz @ {info['dc']}%")
-        print("\n--- Input Status ---")
-        for pin_num in [26, 27]:
-            self.update_input_state(pin_num)
-            state = self.input_pins[pin_num]['state']
-            state_str = "HIGH" if state else "LOW"
-            print(f"PIN{pin_num}: {state_str} (pull-up enabled)")
-        print()
+        except (ValueError, IndexError):
+            return False
 
     def cleanup(self):
         self.running = False
@@ -161,53 +96,21 @@ class PWMController:
             self.pwm_pins[pin_num]['pwm'].deinit()
 
     def run(self):
-        print("PWM Command Controller")
-        print(f"LED Heartbeat on PIN{LED_PIN} (blink interval: {BLINK_INTERVAL}s)")
-        print("PWM Outputs (PIN17, PIN16):")
-        print("  p17,freq,dc          - Set PIN17 frequency and duty cycle")
-        print("  p16,freq,dc          - Set PIN16 frequency and duty cycle")
-        print("  p17 f=freq           - Set PIN17 frequency only")
-        print("  p17 dc=duty          - Set PIN17 duty cycle only")
-        print("  p16 f=freq           - Set PIN16 frequency only")
-        print("  p16 dc=duty          - Set PIN16 duty cycle only")
-        print("\nInputs (PIN26, PIN27 - pull-ups enabled):")
-        print("  status               - Show current PWM settings and input states")
-        print("\nGeneral:")
-        print("  help                 - Show this help message")
-        print("  exit                 - Exit program")
-        print("-" * 50)
-
         try:
             while True:
-                self.status()
-                cmd = input("> ").strip()
-
-                if cmd.lower() in ['exit', 'quit', 'x']:
-                    break
-                elif cmd.lower() == 'status':
-                    continue
-                elif cmd.lower() == 'help':
-                    print("\nPWM Outputs (PIN17, PIN16):")
-                    print("  p17,freq,dc          - Set PIN17 frequency and duty cycle")
-                    print("  p16,freq,dc          - Set PIN16 frequency and duty cycle")
-                    print("  p17 f=freq           - Set PIN17 frequency only")
-                    print("  p17 dc=duty          - Set PIN17 duty cycle only")
-                    print("  p16 f=freq           - Set PIN16 frequency only")
-                    print("  p16 dc=duty          - Set PIN16 duty cycle only")
-                    print("\nInputs (PIN26, PIN27 - pull-ups enabled):")
-                    print("  status               - Show current PWM settings and input states")
-                    print()
+                cmd = input()
+                if self.parse_command(cmd):
+                    print("OK\r")
                 else:
-                    self.parse_command(cmd)
-
+                    print("ERROR\r")
         except KeyboardInterrupt:
-            print("\nInterrupted...")
+            pass
         finally:
-            print("Cleaning up...")
             self.cleanup()
-            print("Done!")
 
 def main():
+    Pin(26, Pin.IN, Pin.PULL_UP)
+    Pin(27, Pin.IN, Pin.PULL_UP)
     controller = PWMController()
     controller.run()
 

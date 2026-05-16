@@ -191,12 +191,6 @@ class PWMControlGUI(QMainWindow):
         main_layout.addWidget(QLabel("Response Log:"))
         main_layout.addWidget(self.log_text)
 
-        # Refresh Status Button
-        self.refresh_btn = QPushButton("Refresh Status")
-        self.refresh_btn.clicked.connect(self.refresh_status)
-        self.refresh_btn.setEnabled(False)
-        main_layout.addWidget(self.refresh_btn)
-
         central_widget.setLayout(main_layout)
 
     def update_ports(self):
@@ -246,7 +240,6 @@ class PWMControlGUI(QMainWindow):
             self.port_combo.setEnabled(False)
             self.baud_combo.setEnabled(False)
             self.apply_btn.setEnabled(True)
-            self.refresh_btn.setEnabled(True)
             self.log_text.clear()
             self.log_text.append("Connected successfully. Ready to send commands.")
         else:
@@ -256,7 +249,6 @@ class PWMControlGUI(QMainWindow):
             self.port_combo.setEnabled(True)
             self.baud_combo.setEnabled(True)
             self.apply_btn.setEnabled(False)
-            self.refresh_btn.setEnabled(False)
 
     def on_data_received(self, data):
         self.log_text.append(data)
@@ -266,14 +258,6 @@ class PWMControlGUI(QMainWindow):
 
     def update_dc2_label(self):
         self.dc2_label.setText(f"{self.dc2_slider.value()}%")
-
-    def refresh_status(self):
-        if not self.serial_thread or not self.serial_thread.isRunning() or not self.serial_thread.serial:
-            QMessageBox.warning(self, "Error", "Not connected to device.")
-            return
-
-        self.log_text.clear()
-        self.serial_thread.send_command("status")
 
     def apply_settings(self):
         if not self.serial_thread or not self.serial_thread.isRunning() or not self.serial_thread.serial:
@@ -286,13 +270,8 @@ class PWMControlGUI(QMainWindow):
         dc2 = self.dc2_slider.value()
 
         self.log_text.clear()
-        self.log_text.append(f"Applying settings:\n  Channel 1: {freq1}Hz @ {dc1}%\n  Channel 2: {freq2}Hz @ {dc2}%\n")
-
-        cmd1 = f"p17,{freq1},{dc1}"
-        cmd2 = f"p16,{freq2},{dc2}"
-
-        self.serial_thread.send_command(cmd1)
-        self.serial_thread.send_command(cmd2)
+        cmd = f"SET=3,{freq1},{dc1},{freq2},{dc2}"
+        self.serial_thread.send_command(cmd)
 
     def closeEvent(self, event):
         if self.serial_thread:
